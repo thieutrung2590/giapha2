@@ -1,42 +1,72 @@
-import { Profile } from "@/types";
-import { createClient } from "@/utils/supabase/server";
-import { cookies } from "next/headers";
-import { cache } from "react";
+import { createClient } from '@/utils/supabase/server'
 
-// Hàm này được cache lại để đảm bảo chỉ tạo 1 Supabase Client duy nhất cho mỗi request
-export const getSupabase = cache(async () => {
-  const cookieStore = await cookies();
-  return createClient(cookieStore);
-});
+/**
+ * Lấy user hiện tại từ Supabase Auth
+ */
+export const getUser = async () => {
+  const supabase = await createClient()
 
-export const getUser = cache(async () => {
-  const supabase = await getSupabase();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+    error,
+  } = await supabase.auth.getUser()
 
-  return user;
-});
-
-export const getProfile = cache(async (userId?: string) => {
-  let id = userId;
-  if (!id) {
-    const user = await getUser();
-    if (!user) return null;
-    id = user.id;
+  if (error) {
+    console.error('getUser error:', error)
+    return null
   }
 
-  const supabase = await getSupabase();
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", id)
-    .single();
+  return user
+}
 
-  return profile as Profile | null;
-});
+/**
+ * Lấy profile theo user id
+ */
+export const getProfile = async (userId?: string) => {
+  const supabase = await createClient()
 
-export const getIsAdmin = cache(async () => {
-  const profile = await getProfile();
-  return profile?.role === "admin";
-});
+  // nếu không truyền userId → lấy từ auth
+  let uid = userId
+
+  if (!uid) {
+    const user = await getUser()
+    uid = user?.id
+  }
+
+  if (!uid) return null
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', uid)
+    .single()
+
+  if (error) {
+    console.error('getProfile error:', error)
+    return null
+  }
+
+  return data
+}
+
+/**
+ * Kiểm tra user có phải admin không
+ */
+export const getIsAdmin = async () => {
+  const profile = await getProfile()
+
+  if (!profile) return false
+
+  return profile.role === 'admin'
+}
+
+/**
+ * Kiểm tra user đã được kích hoạt chưa
+ */
+export const getIsActive = async () => {
+  const profile = await getProfile()
+
+  if (!profile) return false
+
+  return profile.is_active === true
+}
